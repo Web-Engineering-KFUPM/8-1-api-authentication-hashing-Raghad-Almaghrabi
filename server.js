@@ -232,7 +232,6 @@
  *   9) If something crashes inside try block:
  *        return res.status(500).json({ error: "Server error during weather fetch" });
  */
-
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -251,26 +250,141 @@ app.get("/", (_req, res) => {
   res.send("Server is running");
 });
 
-// =========================
-// POST /register
-// =========================
+// =========================================================
+// TODO 1: IMPLEMENT USER REGISTRATION (POST /register)
+// =========================================================
 app.post("/register", async (req, res) => {
-  // Implement logic here based on the TODO 1.
+  try {
+    // 1) Read JSON body
+    const { email, password } = req.body || {};
+
+    // 2) Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // 3) Check if user already exists
+    const existing = users.find((u) => u.email === email);
+    if (existing) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    // 4) Hash the password using bcrypt
+    const hash = await bcrypt.hash(password, 10);
+
+    // 5) Store the new user
+    users.push({ email, passwordHash: hash });
+
+    // 6) Send success response
+    return res.status(201).json({ message: "User registered!" });
+
+  } catch (err) {
+    // 7) Wrap everything in try/catch
+    console.error("Register error:", err);
+    return res.status(500).json({ error: "Server error during register" });
+  }
 });
 
-// =========================
-// POST /login
-// =========================
+// =========================================================
+// TODO 2: IMPLEMENT USER LOGIN (POST /login)
+// =========================================================
 app.post("/login", async (req, res) => {
-  // Implement logic here based on the TODO 2.
+  try {
+    // 1) Read JSON body
+    const { email, password } = req.body || {};
+
+    // 2) Validate
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // 3) Find user by email
+    const user = users.find((u) => u.email === email);
+    if (!user) {
+      return res.status(400).json({ error: "User not found" });
+    }
+
+    // 4) Compare passwords with bcrypt
+    const match = await bcrypt.compare(password, user.passwordHash);
+    if (!match) {
+      return res.status(400).json({ error: "Wrong password" });
+    }
+
+    // 5) Create JWT token
+    const token = jwt.sign(
+      { email }, 
+      JWT_SECRET, 
+      { expiresIn: "1h" }
+    );
+
+    // 6) Return the token
+    return res.json({ token });
+
+  } catch (err) {
+    // 7) Handle unexpected errors
+    console.error("Login error:", err);
+    return res.status(500).json({ error: "Server error during login" });
+  }
 });
 
-// =========================
-// Protected Weather API
-// GET /weather?city=Riyadh
-// =========================
+// =========================================================
+// TODO 3: IMPLEMENT PROTECTED WEATHER ENDPOINT (GET /weather)
+// =========================================================
 app.get("/weather", async (req, res) => {
-  // Implement logic here based on the TODO 3.
+  try {
+    // 1) Read Authorization header
+    const auth = req.headers.authorization;
+    if (!auth) {
+      return res.status(401).json({ error: "Missing token" });
+    }
+
+    // 2) Extract token (Format is usually "Bearer <token>")
+    const token = auth.split(" ")[1];
+    if (!token) {
+        return res.status(401).json({ error: "Invalid token format" });
+    }
+
+    // 3) Verify token
+    try {
+      jwt.verify(token, JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    // 4) Read city from query string
+    const city = req.query.city;
+    if (!city) {
+      return res.status(400).json({ error: "City required" });
+    }
+
+    // 5) Prepare external weather API URL
+    const url = `https://goweather.herokuapp.com/weather/${encodeURIComponent(city)}`;
+
+    // 6) Use fetch() to call API
+    // Note: Node v18+ supports fetch natively. If on older Node, use 'node-fetch' package.
+    const weatherResponse = await fetch(url);
+    
+    if (!weatherResponse.ok) {
+      return res.status(500).json({ error: "Error from weather API" });
+    }
+
+    // 7) Parse JSON
+    const data = await weatherResponse.json();
+
+    // 8) Return structured weather data
+    return res.json({
+      city,
+      temp: data.temperature,
+      description: data.description,
+      wind: data.wind,
+      raw: data 
+    });
+
+  } catch (err) {
+    // 9) Handle crashes
+    console.error("Weather error:", err);
+    return res.status(500).json({ error: "Server error during weather fetch" });
+  }
 });
 
 // Start server
